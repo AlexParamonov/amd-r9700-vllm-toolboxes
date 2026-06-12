@@ -72,8 +72,8 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
-  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 2 \
-  --max-model-len 131072 --served-model-name qwen27 --enable-prefix-caching \
+  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 1 \
+  --max-model-len 196608 --served-model-name qwen27 --enable-prefix-caching \
   --attention-backend TRITON_ATTN --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
   --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
