@@ -410,6 +410,12 @@ Examples:
         help="Custom directory to save configs (default: vLLM's configs directory)",
     )
     parser.add_argument(
+        "--shapes",
+        type=str,
+        default=None,
+        help="Comma-separated N:K pairs to benchmark (e.g. 8192:5120,4096:3072). Overrides REQUIRED_SHAPES.",
+    )
+    parser.add_argument(
         "--block-n",
         type=int,
         default=128,
@@ -454,10 +460,19 @@ Examples:
     print(f"Dry run: {args.dry_run}")
     print()
 
+    # Parse shapes
+    if args.shapes:
+        shapes = []
+        for pair in args.shapes.split(","):
+            n_str, k_str = pair.strip().split(":")
+            shapes.append((int(n_str), int(k_str)))
+    else:
+        shapes = REQUIRED_SHAPES
+
     # Run benchmarks
     start_time = datetime.now()
     results = run_benchmarks(
-        shapes=REQUIRED_SHAPES,
+        shapes=shapes,
         batch_sizes=batch_sizes,
         block_shape=[args.block_n, args.block_k],
         configs_dir=configs_dir,
@@ -478,7 +493,7 @@ Examples:
     else:
         # Check which configs now exist
         all_exist = True
-        for N, K in REQUIRED_SHAPES:
+        for N, K in shapes:
             exists = config_exists(configs_dir, N, K, args.block_n, args.block_k, device_name)
             filename = get_config_filename(N, K, args.block_n, args.block_k, device_name)
             status = "EXISTS" if exists else "MISSING"
