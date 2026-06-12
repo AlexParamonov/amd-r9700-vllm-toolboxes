@@ -305,28 +305,6 @@ class TestRequiredShapes:
             assert K > 0
 
 
-# ── Test: Block Shape Constants ───────────────────────────────────────
-
-
-class TestBlockShape:
-    """Tests for block shape configuration."""
-
-    def test_block_shape_is_list(self):
-        from bench_fp8 import BLOCK_SHAPE
-
-        assert isinstance(BLOCK_SHAPE, list)
-
-    def test_block_shape_length_2(self):
-        from bench_fp8 import BLOCK_SHAPE
-
-        assert len(BLOCK_SHAPE) == 2
-
-    def test_block_shape_values_128(self):
-        from bench_fp8 import BLOCK_SHAPE
-
-        assert BLOCK_SHAPE == [128, 128]
-
-
 # ── Test: Default Batch Sizes ─────────────────────────────────────────
 
 

@@ -32,10 +32,37 @@ REQUIRED_SHAPES: list[tuple[int, int]] = [
     (17408, 5120),
 ]
 
-BLOCK_SHAPE = [128, 128]  # Must match existing vLLM configs
-
 # Default batch sizes to benchmark (covers typical decode/prefill ranges)
 DEFAULT_BATCH_SIZES: list[int] = [1, 2, 4, 8, 16, 24, 32, 48, 64, 96, 128, 256]
+
+
+# ── GPU Dependencies (optional — required for benchmarking, not for --dry-run) ──
+
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment]
+
+try:
+    from vllm.model_executor.layers.quantization.utils.fp8_utils import (
+        _w8a8_triton_block_scaled_mm,
+    )
+    from vllm.platforms import current_platform
+    from vllm.triton_utils import triton
+except ImportError:
+    _w8a8_triton_block_scaled_mm = None  # type: ignore[assignment,misc]
+    current_platform = None  # type: ignore[assignment,misc]
+    triton = None  # type: ignore[assignment,misc]
+
+
+def _ensure_gpu_deps() -> None:
+    """Exit with an error if GPU dependencies are not available."""
+    if torch is None:
+        print("ERROR: torch is required for benchmarking. Install PyTorch with ROCm support.")
+        sys.exit(1)
+    if _w8a8_triton_block_scaled_mm is None:
+        print("ERROR: vLLM is required for benchmarking. Install vLLM first.")
+        sys.exit(1)
 
 
 # ── Pure Python Functions (no torch dependency) ──────────────────────
@@ -154,31 +181,7 @@ def get_configs_dir() -> str:
     return local_path
 
 
-# ── GPU-Dependent Functions (require torch and vLLM) ──────────────────
-
-
-def _import_torch():
-    """Import torch with proper error handling."""
-    try:
-        import torch
-        return torch
-    except ImportError:
-        print("ERROR: torch is required for benchmarking. Install PyTorch with ROCm support.")
-        sys.exit(1)
-
-
-def _import_vllm_kernel():
-    """Import vLLM kernel with proper error handling."""
-    try:
-        from vllm.model_executor.layers.quantization.utils.fp8_utils import (
-            _w8a8_triton_block_scaled_mm,
-        )
-        from vllm.platforms import current_platform
-        from vllm.triton_utils import triton
-        return _w8a8_triton_block_scaled_mm, current_platform, triton
-    except ImportError as e:
-        print(f"ERROR: vLLM is required for benchmarking. Install vLLM first. ({e})")
-        sys.exit(1)
+# ── GPU-Dependent Functions ──────────────────────────────────────────
 
 
 def create_test_tensors(
@@ -192,8 +195,6 @@ def create_test_tensors(
     - As: [M, k_tiles] FP32 per-token-group scale
     - Bs: [n_tiles, k_tiles] FP32 per-block scale
     """
-    torch = _import_torch()
-
     factor_for_scale = 1e-2
     fp8_info = torch.finfo(torch.float8_e4m3fn)
     fp8_max, fp8_min = fp8_info.max, fp8_info.min
@@ -217,9 +218,6 @@ def w8a8_block_matmul(
     A, B, As, Bs, block_size: list[int], config: dict[str, Any], output_dtype=None
 ):
     """Perform FP8 block-scaled matrix multiplication using the Triton kernel."""
-    torch = _import_torch()
-    kernel, current_platform, triton = _import_vllm_kernel()
-
     if output_dtype is None:
         output_dtype = torch.float16
 
@@ -235,7 +233,7 @@ def w8a8_block_matmul(
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         )
 
-    kernel[grid](
+    _w8a8_triton_block_scaled_mm[grid](
         A, B, C, As, Bs,
         M, N, K,
         block_n, block_k,
@@ -258,8 +256,6 @@ def benchmark_config(
 
     Returns average latency in microseconds.
     """
-    torch = _import_torch()
-
     if out_dtype is None:
         out_dtype = torch.float16
 
@@ -296,9 +292,6 @@ def tune_batch_size(
 
     Returns the best config dict.
     """
-    torch = _import_torch()
-    _, _, triton = _import_vllm_kernel()
-
     if out_dtype is None:
         out_dtype = torch.float16
 
@@ -346,9 +339,6 @@ def run_benchmarks(
     print(f"Shapes to benchmark: {len(shapes)}")
     print()
 
-    # Track whether we need to import vllm (lazy import)
-    _vllm_imported = False
-
     results: dict[tuple[int, int], dict[str, dict[str, Any]]] = {}
 
     for N, K in shapes:
@@ -356,12 +346,6 @@ def run_benchmarks(
             filename = get_config_filename(N, K, block_n, block_k, device_name)
             print(f"[SKIP] Config already exists: {filename}")
             continue
-
-        # Lazy import: only import vllm when we actually need to benchmark
-        if not dry_run and not _vllm_imported:
-            _, current_platform, _ = _import_vllm_kernel()
-            device_name = current_platform.get_device_name().replace(" ", "_")
-            _vllm_imported = True
 
         print(f"[BENCH] N={N}, K={K}")
         shape_configs: dict[str, dict[str, Any]] = {}
@@ -463,13 +447,9 @@ Examples:
     # Get device name
     device_name = "gfx1201"
     if not args.dry_run:
-        try:
-            _, current_platform, _ = _import_vllm_kernel()
-            device_name = current_platform.get_device_name().replace(" ", "_")
-            print(f"Device: {current_platform.get_device_name()}")
-        except SystemExit:
-            print("ERROR: vLLM is required for benchmarking. Use --dry-run for preview.")
-            sys.exit(1)
+        _ensure_gpu_deps()
+        device_name = current_platform.get_device_name().replace(" ", "_")
+        print(f"Device: {current_platform.get_device_name()}")
     else:
         print("Device: (dry run - no GPU required)")
 
