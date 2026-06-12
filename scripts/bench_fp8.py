@@ -428,21 +428,12 @@ Examples:
         help="GPU device index to benchmark on (default: 0). Sets HIP_VISIBLE_DEVICES.",
     )
     parser.add_argument(
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 7922a7a (feat(bench_fp8): add --iters flag, use median for stability)
         "--iters",
         type=int,
         default=10,
         help="Measurement iterations per config (default: 10, try 50 for stability)",
     )
     parser.add_argument(
-<<<<<<< HEAD
-=======
->>>>>>> e784b2a (feat(bench_fp8): add --gpu flag for multi-GPU selection)
-=======
->>>>>>> 7922a7a (feat(bench_fp8): add --iters flag, use median for stability)
         "--batch-sizes",
         type=str,
         default=None,
