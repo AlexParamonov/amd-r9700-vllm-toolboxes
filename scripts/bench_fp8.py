@@ -323,6 +323,7 @@ def run_benchmarks(
     configs_dir: str,
     dry_run: bool = False,
     device_name: str = "gfx1201",
+    force: bool = False,
 ) -> dict[tuple[int, int], dict[str, dict[str, Any]]]:
     """Run benchmarks for all required (N, K) shapes.
 
@@ -341,7 +342,7 @@ def run_benchmarks(
     results: dict[tuple[int, int], dict[str, dict[str, Any]]] = {}
 
     for N, K in shapes:
-        if config_exists(configs_dir, N, K, block_n, block_k, device_name):
+        if not force and config_exists(configs_dir, N, K, block_n, block_k, device_name):
             filename = get_config_filename(N, K, block_n, block_k, device_name)
             print(f"[SKIP] Config already exists: {filename}")
             continue
@@ -417,6 +418,11 @@ Examples:
         help="Comma-separated N:K pairs to benchmark (e.g. 8192:5120,4096:3072). Overrides REQUIRED_SHAPES.",
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-benchmark shapes even if configs already exist (for drift detection)",
+    )
+    parser.add_argument(
         "--block-n",
         type=int,
         default=128,
@@ -479,6 +485,7 @@ Examples:
         configs_dir=configs_dir,
         dry_run=args.dry_run,
         device_name=device_name,
+        force=args.force,
     )
     end_time = datetime.now()
 

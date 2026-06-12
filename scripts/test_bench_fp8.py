@@ -291,6 +291,7 @@ class TestRequiredShapes:
             (5120, 3072),
             (5120, 8704),
             (7168, 5120),
+            (8192, 5120),
             (17408, 5120),
         ]
         assert REQUIRED_SHAPES == expected
