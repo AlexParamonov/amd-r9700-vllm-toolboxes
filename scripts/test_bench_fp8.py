@@ -41,7 +41,6 @@ def sample_config():
         "BLOCK_SIZE_K": 128,
         "GROUP_SIZE_M": 32,
         "num_warps": 4,
-        "num_stages": 2,
         "kpack": 1,
         "matrix_instr_nonkdim": 16,
     }
@@ -81,7 +80,6 @@ class TestSearchSpace:
             "BLOCK_SIZE_K",
             "GROUP_SIZE_M",
             "num_warps",
-            "num_stages",
             "kpack",
             "matrix_instr_nonkdim",
         }
@@ -95,14 +93,13 @@ class TestSearchSpace:
 
         configs = get_configs_search_space()
         for config in configs:
-            assert config["BLOCK_SIZE_M"] in [16, 32, 64, 128, 256]
+            assert config["BLOCK_SIZE_M"] in [32, 64, 128, 256]
             assert config["BLOCK_SIZE_N"] in [32, 64, 128, 256]
-            assert config["BLOCK_SIZE_K"] in [64, 128]
-            assert config["GROUP_SIZE_M"] in [1, 16, 32, 64]
+            assert config["BLOCK_SIZE_K"] == 128
+            assert config["GROUP_SIZE_M"] in [1, 8, 16, 32]
             assert config["num_warps"] in [4, 8]
-            assert config["num_stages"] in [2, 3, 4, 5]
             assert config["kpack"] in [1, 2]
-            assert config["matrix_instr_nonkdim"] in [0, 16]
+            assert config["matrix_instr_nonkdim"] == 16
 
     def test_filter_valid_configs_block_k_128(self):
         from bench_fp8 import filter_valid_configs, get_configs_search_space
@@ -114,9 +111,9 @@ class TestSearchSpace:
         for config in filtered:
             assert 128 % config["BLOCK_SIZE_K"] == 0
 
-        # Should include both BLOCK_SIZE_K=64 and BLOCK_SIZE_K=128
+        # Only BLOCK_SIZE_K=128 in search space
         block_k_values = {c["BLOCK_SIZE_K"] for c in filtered}
-        assert block_k_values == {64, 128}
+        assert block_k_values == {128}
 
     def test_filter_valid_configs_block_k_64(self):
         from bench_fp8 import filter_valid_configs, get_configs_search_space
@@ -124,9 +121,10 @@ class TestSearchSpace:
         search_space = get_configs_search_space()
         filtered = filter_valid_configs(search_space, block_k=64)
 
-        # Should only include BLOCK_SIZE_K=64
+        # No BLOCK_SIZE_K=64 in search space, so nothing should pass
         for config in filtered:
             assert config["BLOCK_SIZE_K"] == 64
+        assert len(filtered) == 0
 
 
 # ── Test: Config Filename Generation ──────────────────────────────────
