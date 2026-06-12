@@ -75,26 +75,24 @@ def get_configs_search_space() -> list[dict[str, Any]]:
     GROUP_SIZE_M, num_warps, num_stages, kpack, matrix_instr_nonkdim.
     """
     configs = []
-    for num_stages in [2, 3, 4, 5]:
-        for block_m in [16, 32, 64, 128, 256]:
-            for block_k in [64, 128]:
-                for block_n in [32, 64, 128, 256]:
-                    for num_warps in [4, 8]:
-                        for group_size in [1, 16, 32, 64]:
-                            for kpack in [1, 2]:
-                                for matrix_instr_nonkdim in [0, 16]:
-                                    configs.append(
-                                        {
-                                            "BLOCK_SIZE_M": block_m,
-                                            "BLOCK_SIZE_N": block_n,
-                                            "BLOCK_SIZE_K": block_k,
-                                            "GROUP_SIZE_M": group_size,
-                                            "num_warps": num_warps,
-                                            "num_stages": num_stages,
-                                            "kpack": kpack,
-                                            "matrix_instr_nonkdim": matrix_instr_nonkdim,
-                                        }
-                                    )
+    for block_m in [32, 64, 128, 256]:
+        for block_n in [32, 64, 128, 256]:
+            for block_k in [128]:
+                for num_warps in [4, 8]:
+                    for group_size in [1, 8, 16, 32]:
+                        for kpack in [1, 2]:
+                            for matrix_instr_nonkdim in [16]:
+                                configs.append(
+                                    {
+                                        "BLOCK_SIZE_M": block_m,
+                                        "BLOCK_SIZE_N": block_n,
+                                        "BLOCK_SIZE_K": block_k,
+                                        "GROUP_SIZE_M": group_size,
+                                        "num_warps": num_warps,
+                                        "kpack": kpack,
+                                        "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                                    }
+                                )
     return configs
 
 
@@ -362,7 +360,6 @@ def run_benchmarks(
                   f"BLOCK_SIZE_N={best_config['BLOCK_SIZE_N']}, "
                   f"GROUP_SIZE_M={best_config['GROUP_SIZE_M']}, "
                   f"num_warps={best_config['num_warps']}, "
-                  f"num_stages={best_config['num_stages']}, "
                   f"kpack={best_config['kpack']}, "
                   f"matrix_instr_nonkdim={best_config['matrix_instr_nonkdim']})")
 
