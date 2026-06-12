@@ -42,6 +42,8 @@ def sample_config():
         "GROUP_SIZE_M": 32,
         "num_warps": 4,
         "num_stages": 2,
+        "kpack": 1,
+        "matrix_instr_nonkdim": 16,
     }
 
 
@@ -80,6 +82,8 @@ class TestSearchSpace:
             "GROUP_SIZE_M",
             "num_warps",
             "num_stages",
+            "kpack",
+            "matrix_instr_nonkdim",
         }
         for config in configs:
             assert required_keys.issubset(config.keys()), (
@@ -97,6 +101,8 @@ class TestSearchSpace:
             assert config["GROUP_SIZE_M"] in [1, 16, 32, 64]
             assert config["num_warps"] in [4, 8]
             assert config["num_stages"] in [2, 3, 4, 5]
+            assert config["kpack"] in [1, 2]
+            assert config["matrix_instr_nonkdim"] in [0, 16]
 
     def test_filter_valid_configs_block_k_128(self):
         from bench_fp8 import filter_valid_configs, get_configs_search_space
@@ -235,7 +241,7 @@ class TestConfigSaveLoad:
         with open(filepath) as f:
             loaded = json.load(f)
 
-        # Verify structure matches vLLM format
+        # Verify structure matches vLLM format (keys: BLOCK_SIZE_M/N/K, GROUP_SIZE_M, kpack, matrix_instr_nonkdim, num_warps)
         for batch_size, config in loaded.items():
             assert isinstance(batch_size, str)  # Keys are strings
             assert "BLOCK_SIZE_M" in config
@@ -243,7 +249,8 @@ class TestConfigSaveLoad:
             assert "BLOCK_SIZE_K" in config
             assert "GROUP_SIZE_M" in config
             assert "num_warps" in config
-            assert "num_stages" in config
+            assert "kpack" in config
+            assert "matrix_instr_nonkdim" in config
 
     def test_save_config_creates_directory(self, tmp_path, sample_configs_dict):
         from bench_fp8 import save_config
@@ -362,7 +369,7 @@ class TestDefaultBatchSizes:
 class TestIdempotency:
     """Tests for idempotent behavior (skipping existing configs)."""
 
-    def test_skip_existing_config(self, temp_configs_dir, sample_configs_dict):
+    def test_save_config_overwrites_existing(self, temp_configs_dir, sample_configs_dict):
         from bench_fp8 import config_exists, save_config
 
         # Save initial config

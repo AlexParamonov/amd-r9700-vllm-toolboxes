@@ -20,7 +20,6 @@ import json
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 # ── Constants ─────────────────────────────────────────────────────────
@@ -46,7 +45,7 @@ def get_configs_search_space() -> list[dict[str, Any]]:
     """Generate the search space of kernel configurations to benchmark.
 
     Returns a list of dicts with keys: BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K,
-    GROUP_SIZE_M, num_warps, num_stages.
+    GROUP_SIZE_M, num_warps, num_stages, kpack, matrix_instr_nonkdim.
     """
     configs = []
     for num_stages in [2, 3, 4, 5]:
@@ -55,16 +54,20 @@ def get_configs_search_space() -> list[dict[str, Any]]:
                 for block_n in [32, 64, 128, 256]:
                     for num_warps in [4, 8]:
                         for group_size in [1, 16, 32, 64]:
-                            configs.append(
-                                {
-                                    "BLOCK_SIZE_M": block_m,
-                                    "BLOCK_SIZE_N": block_n,
-                                    "BLOCK_SIZE_K": block_k,
-                                    "GROUP_SIZE_M": group_size,
-                                    "num_warps": num_warps,
-                                    "num_stages": num_stages,
-                                }
-                            )
+                            for kpack in [1, 2]:
+                                for matrix_instr_nonkdim in [0, 16]:
+                                    configs.append(
+                                        {
+                                            "BLOCK_SIZE_M": block_m,
+                                            "BLOCK_SIZE_N": block_n,
+                                            "BLOCK_SIZE_K": block_k,
+                                            "GROUP_SIZE_M": group_size,
+                                            "num_warps": num_warps,
+                                            "num_stages": num_stages,
+                                            "kpack": kpack,
+                                            "matrix_instr_nonkdim": matrix_instr_nonkdim,
+                                        }
+                                    )
     return configs
 
 
@@ -345,7 +348,6 @@ def run_benchmarks(
 
     # Track whether we need to import vllm (lazy import)
     _vllm_imported = False
-    _current_platform = None
 
     results: dict[tuple[int, int], dict[str, dict[str, Any]]] = {}
 
@@ -357,8 +359,8 @@ def run_benchmarks(
 
         # Lazy import: only import vllm when we actually need to benchmark
         if not dry_run and not _vllm_imported:
-            _, _current_platform, _ = _import_vllm_kernel()
-            device_name = _current_platform.get_device_name().replace(" ", "_")
+            _, current_platform, _ = _import_vllm_kernel()
+            device_name = current_platform.get_device_name().replace(" ", "_")
             _vllm_imported = True
 
         print(f"[BENCH] N={N}, K={K}")
@@ -376,7 +378,9 @@ def run_benchmarks(
                   f"BLOCK_SIZE_N={best_config['BLOCK_SIZE_N']}, "
                   f"GROUP_SIZE_M={best_config['GROUP_SIZE_M']}, "
                   f"num_warps={best_config['num_warps']}, "
-                  f"num_stages={best_config['num_stages']})")
+                  f"num_stages={best_config['num_stages']}, "
+                  f"kpack={best_config['kpack']}, "
+                  f"matrix_instr_nonkdim={best_config['matrix_instr_nonkdim']})")
 
         if not dry_run and shape_configs:
             filepath = save_config(configs_dir, N, K, block_n, block_k, shape_configs, device_name)
