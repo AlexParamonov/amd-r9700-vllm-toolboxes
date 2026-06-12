@@ -22,6 +22,21 @@ import sys
 from datetime import datetime
 from typing import Any
 
+# ── Early GPU selection (must happen before torch import) ────────────
+# Parse --gpu from argv directly, before argparse, so we can set
+# HIP_VISIBLE_DEVICES before torch initializes.
+_early_gpu = None
+for _i, _arg in enumerate(sys.argv[1:], 1):
+    if _arg == "--gpu" and _i + 1 < len(sys.argv):
+        _early_gpu = sys.argv[_i + 1]
+        break
+    elif _arg.startswith("--gpu="):
+        _early_gpu = _arg.split("=", 1)[1]
+        break
+if _early_gpu is not None:
+    os.environ["HIP_VISIBLE_DEVICES"] = str(_early_gpu)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(_early_gpu)
+
 # ── Constants ─────────────────────────────────────────────────────────
 
 # (N, K) combos required for the model (e.g., Qwen3-14B-FP8, Qwen3-27B-FP8)
@@ -253,7 +268,7 @@ def benchmark_config(
 ) -> float:
     """Benchmark a single kernel configuration.
 
-    Returns average latency in microseconds.
+    Returns median latency in microseconds.
     """
     if out_dtype is None:
         out_dtype = torch.float16
@@ -279,13 +294,17 @@ def benchmark_config(
         end_event.synchronize()
         latencies.append(start_event.elapsed_time(end_event))
 
-    avg_us = sum(latencies) / num_iters * 1000  # Convert ms to us
-    return avg_us
+    # Use median for stability (robust to thermal spikes)
+    latencies.sort()
+    median_ms = latencies[len(latencies) // 2]
+    median_us = median_ms * 1000  # Convert ms to us
+    return median_us
 
 
 def tune_batch_size(
     M: int, N: int, K: int, block_size: list[int],
     search_space: list[dict[str, Any]], out_dtype=None,
+    num_iters: int = 10,
 ) -> dict[str, Any]:
     """Find the fastest kernel config for a specific (M, N, K) shape.
 
@@ -302,7 +321,7 @@ def tune_batch_size(
     for config in search_space:
         try:
             kernel_time = benchmark_config(
-                A, B, As, Bs, block_size, config, out_dtype, num_iters=10
+                A, B, As, Bs, block_size, config, out_dtype, num_iters=num_iters
             )
         except triton.runtime.autotuner.OutOfResources:
             # Some configurations may be invalid and fail to compile
@@ -324,6 +343,7 @@ def run_benchmarks(
     dry_run: bool = False,
     device_name: str = "gfx1201",
     force: bool = False,
+    num_iters: int = 10,
 ) -> dict[tuple[int, int], dict[str, dict[str, Any]]]:
     """Run benchmarks for all required (N, K) shapes.
 
@@ -356,7 +376,7 @@ def run_benchmarks(
                 continue
 
             print(f"  Tuning M={M}...", end="", flush=True)
-            best_config = tune_batch_size(M, N, K, [block_n, block_k], search_space)
+            best_config = tune_batch_size(M, N, K, [block_n, block_k], search_space, num_iters=num_iters)
             shape_configs[str(M)] = best_config
             print(f" done (best: BLOCK_SIZE_M={best_config['BLOCK_SIZE_M']}, "
                   f"BLOCK_SIZE_N={best_config['BLOCK_SIZE_N']}, "
@@ -385,6 +405,9 @@ Examples:
     # Dry run (no actual benchmarking)
     python scripts/bench_fp8.py --dry-run
 
+    # Benchmark on specific GPU
+    python scripts/bench_fp8.py --gpu 1
+
     # Custom batch sizes
     python scripts/bench_fp8.py --batch-sizes 1,8,32,128,512
 
@@ -397,6 +420,18 @@ Examples:
         "--dry-run",
         action="store_true",
         help="Print what would be benchmarked without running benchmarks",
+    )
+    parser.add_argument(
+        "--gpu",
+        type=int,
+        default=None,
+        help="GPU device index to benchmark on (default: 0). Sets HIP_VISIBLE_DEVICES.",
+    )
+    parser.add_argument(
+        "--iters",
+        type=int,
+        default=10,
+        help="Measurement iterations per config (default: 10, try 50 for stability)",
     )
     parser.add_argument(
         "--batch-sizes",
@@ -460,8 +495,14 @@ Examples:
         _ensure_gpu_deps()
         device_name = current_platform.get_device_name().replace(" ", "_")
         print(f"Device: {current_platform.get_device_name()}")
+        if args.gpu is not None:
+            print(f"GPU: {args.gpu}")
+        else:
+            print(f"GPU: 0 (default)")
     else:
         print("Device: (dry run - no GPU required)")
+        if args.gpu is not None:
+            print(f"GPU: {args.gpu}")
 
     print(f"Configs directory: {configs_dir}")
     print(f"Dry run: {args.dry_run}")
@@ -486,6 +527,7 @@ Examples:
         dry_run=args.dry_run,
         device_name=device_name,
         force=args.force,
+        num_iters=args.iters,
     )
     end_time = datetime.now()
 
