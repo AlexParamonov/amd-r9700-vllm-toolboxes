@@ -107,11 +107,8 @@ cleanup() {
 trap cleanup SIGTERM SIGINT SIGHUP
 
 # Wait for vLLM to exit or idle signal.
-while kill -0 "$VLLM_PID" 2>/dev/null; do
-    # Check if idle detector wants us to stop.
-    if [ -f "$STOP_SIGNAL" ]; then
-        cleanup
-    fi
+while [ -f "$STOP_SIGNAL" ] || kill -0 "$VLLM_PID" 2>/dev/null; do
+    [ -f "$STOP_SIGNAL" ] && cleanup
     sleep 1
 done
 
