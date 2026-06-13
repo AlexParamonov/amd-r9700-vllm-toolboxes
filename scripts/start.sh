@@ -123,8 +123,9 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   --language-model-only \
+  --max-model-len 196608  --max-num-seqs 2 \
   --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
-  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 1 \
+  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' \
   --served-model-name qwen27 --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
