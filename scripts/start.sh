@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Usage: $0 [triton|rocm|aiter] [--rebuild]
-ATTN_BACKEND="${1:-triton}"
+ATTN_BACKEND="${1:-aiter}"
 REBUILD=false
 if [[ "${2:-}" == "--rebuild" ]]; then
   REBUILD=true

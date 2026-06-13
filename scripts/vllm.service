@@ -1,0 +1,24 @@
+[Unit]
+Description=vLLM Qwen3.6-27B-FP8 (dual R9700, aiter backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ap
+WorkingDirectory=/home/ap/code/amd-r9700-vllm-toolboxes
+
+# Kill the entire process group on stop (catches dangling vLLM workers).
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+ExecStart=/usr/bin/distrobox enter -T vllm-r9700 -- /home/ap/code/amd-r9700-vllm-toolboxes/scripts/launch.sh
+
+Restart=on-failure
+RestartSec=10
+
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=multi-user.target

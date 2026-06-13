@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Stop any running vLLM instances.
-# Tries SIGTERM first, waits up to 15s, then SIGKILL.
+# Stop any running vLLM instances (serve + workers + engine core).
+# SIGTERM first, wait 15s, then SIGKILL.
 
-PIDS=$(pgrep -f "vllm serve" || true)
+PATTERN="vllm serve|VLLM::Worker|VLLM::EngineCore"
 
-if [[ -z "$PIDS" ]]; then
+if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
   echo "No vLLM processes found."
   exit 0
 fi
 
-echo "Stopping vLLM (PIDs: $(echo $PIDS | tr '\n' ' '))..."
-echo "$PIDS" | xargs kill || true
+PIDS=$(pgrep -f "$PATTERN" | tr '\n' ' ')
+echo "Stopping vLLM (PIDs: ${PIDS})..."
+pkill -f "$PATTERN" || true
 
-# Wait for processes to exit, up to 15s.
+# Wait up to 15s.
 for i in $(seq 1 15); do
-  if ! pgrep -f "vLLM serve" >/dev/null 2>&1; then
+  if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
     echo "vLLM stopped."
     exit 0
   fi
   sleep 1
 done
 
-# Still alive — force kill.
+# Force kill.
 echo "vLLM didn't exit cleanly, sending SIGKILL..."
-PIDS=$(pgrep -f "vllm serve" || true)
-if [[ -n "$PIDS" ]]; then
-  echo "$PIDS" | xargs kill -9 || true
+pkill -9 -f "$PATTERN" || true
+sleep 1
+
+if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
   echo "vLLM killed."
 else
-  echo "vLLM stopped."
+  echo "[-] vLLM still running after SIGKILL."
+  exit 1
 fi
