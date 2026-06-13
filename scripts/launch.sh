@@ -83,6 +83,7 @@ check_idle() {
     done
 }
 STOP_SIGNAL=$(mktemp)
+rm -f "$STOP_SIGNAL"  # File should only exist when idle detection wants to stop
 trap "rm -f $STOP_SIGNAL" EXIT
 check_idle &
 IDLE_PID=$!
