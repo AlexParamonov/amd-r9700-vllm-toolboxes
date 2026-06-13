@@ -23,13 +23,13 @@ fi
 
 case "$ATTN_BACKEND" in
   triton)
-    export VLLM_ATTN_BACKEND=TRITON_ATTN
+    VLLM_ATTN_BACKEND=TRITON_ATTN
     ;;
   rocm)
-    export VLLM_ATTN_BACKEND=ROCM_ATTN
+    VLLM_ATTN_BACKEND=ROCM_ATTN
     ;;
   aiter)
-    export VLLM_ATTN_BACKEND=ROCM_AITER_UNIFIED_ATTN
+    VLLM_ATTN_BACKEND=ROCM_AITER_UNIFIED_ATTN
     export VLLM_ROCM_USE_AITER=1
     export VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION=1
     # Disable AITER subsystems that use C++/HIP JIT kernels (hang/crash on RDNA4)
@@ -41,7 +41,6 @@ case "$ATTN_BACKEND" in
     export VLLM_ROCM_USE_AITER_FP8BMM=0
     export VLLM_ROCM_USE_AITER_FP4BMM=0
     export VLLM_ROCM_USE_AITER_TRITON_ROPE=0
-    export PYTORCH_ALLOC_CONF=expandable_segments:True
     ;;
 esac
 echo "[*] Attention backend: $ATTN_BACKEND ($VLLM_ATTN_BACKEND)"
