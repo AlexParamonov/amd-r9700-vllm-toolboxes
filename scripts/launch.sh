@@ -13,9 +13,30 @@ PORT="${VLLM_PORT:-8079}"
 LOGFILE="${VLLM_LOG:-/tmp/vllm.log}"
 IDLE_TIMEOUT="${VLLM_IDLE_SECONDS:-1500}"  # seconds of no requests before auto-stop
 
-# Start vLLM in background, capture output to log.
-bash "${SCRIPT_DIR}/start.sh" aiter >"$LOGFILE" 2>&1 &
-VLLM_PID=$!
+# Function to find existing vLLM process by port (could be starting or running)
+find_existing_vllm() {
+    local port=$1
+    # Look for vLLM process with matching port in command line
+    local pid
+    pid=$(pgrep -f "vllm serve.*--port ${port}" 2>/dev/null | head -1 || true)
+    if [[ -n "$pid" ]]; then
+        echo "$pid"
+        return 0
+    fi
+    return 1
+}
+
+# Check for existing vLLM process (might be starting or already running)
+EXISTING_PID=$(find_existing_vllm "$PORT" || true)
+
+if [[ -n "$EXISTING_PID" ]]; then
+    echo "[*] Found existing vLLM process (PID ${EXISTING_PID}) for port ${PORT}. Waiting for it to be ready..."
+    VLLM_PID=$EXISTING_PID
+else
+    # Start vLLM in background, capture output to log.
+    bash "${SCRIPT_DIR}/start.sh" aiter >"$LOGFILE" 2>&1 &
+    VLLM_PID=$!
+fi
 
 # Wait for the server to be ready.
 echo "[*] Waiting for vLLM on port ${PORT}..."
