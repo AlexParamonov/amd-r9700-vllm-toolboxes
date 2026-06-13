@@ -126,7 +126,7 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --max-model-len 196608  --max-num-seqs 2 \
   --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
   --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' \
-  --served-model-name qwen27 --enable-prefix-caching \
+  --served-model-name 27b_mtp --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
   --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
