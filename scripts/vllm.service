@@ -19,6 +19,7 @@ Restart=on-failure
 RestartSec=10
 
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=VLLM_IDLE_SECONDS=1500
 
 [Install]
 WantedBy=multi-user.target

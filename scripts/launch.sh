@@ -11,6 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${VLLM_PORT:-8079}"
 LOGFILE="${VLLM_LOG:-/tmp/vllm.log}"
+IDLE_TIMEOUT="${VLLM_IDLE_SECONDS:-1500}"  # seconds of no requests before auto-stop
 
 # Start vLLM in background, capture output to log.
 bash "${SCRIPT_DIR}/start.sh" aiter >"$LOGFILE" 2>&1 &
@@ -34,24 +35,66 @@ done
 # Run warmup to trigger JIT compilation.
 bash "${SCRIPT_DIR}/warmup.sh" "$PORT"
 
+# --- Idle detection ---
+# Poll /metrics every 60s. If no requests for IDLE_TIMEOUT seconds, stop vLLM.
+last_activity=$(date +%s)
+
+check_idle() {
+    tokens_prev=""
+    while true; do
+        sleep 60
+        # Check if vLLM is still alive
+        if ! kill -0 "$VLLM_PID" 2>/dev/null; then
+            break
+        fi
+        # Query vLLM metrics — track monotonically increasing counter
+        tokens_now=$(curl -sf "http://localhost:${PORT}/metrics" 2>/dev/null | grep -E '^vllm:generation_tokens_total\{' | awk '{s+=$NF} END {print s+0}' || echo "0")
+        if [ "${tokens_now:-0}" != "${tokens_prev:-0}" ]; then
+            last_activity=$(date +%s)
+            tokens_prev=$tokens_now
+        fi
+        idle=$(($(date +%s) - last_activity))
+        if [ "$idle" -ge "$IDLE_TIMEOUT" ]; then
+            echo "[*] Idle ${idle}s (timeout ${IDLE_TIMEOUT}s), stopping vLLM..."
+            touch "$STOP_SIGNAL"
+            break
+        fi
+    done
+}
+STOP_SIGNAL=$(mktemp)
+trap "rm -f $STOP_SIGNAL" EXIT
+check_idle &
+IDLE_PID=$!
+
 # Tail the log so systemd keeps the service alive.
-exec tail -f "$LOGFILE" &
+tail -f "$LOGFILE" &
 TAIL_PID=$!
 
 # Forward signals to the vLLM process and all its children.
 cleanup() {
     echo "[*] Stopping vLLM (PID ${VLLM_PID})..."
+    kill "$IDLE_PID" 2>/dev/null || true
+    kill "$TAIL_PID" 2>/dev/null || true
     # Kill the entire process group (vLLM + workers + children).
     pkill -P "$VLLM_PID" 2>/dev/null || true
     kill -- -"$(ps -o pgid= -p "$VLLM_PID" 2>/dev/null | tr -d ' ')" 2>/dev/null || true
     kill "$VLLM_PID" 2>/dev/null || true
     wait "$VLLM_PID" 2>/dev/null || true
-    kill "$TAIL_PID" 2>/dev/null || true
     # Safety sweep: kill any remaining vllm serve processes from this run.
     pkill -f "vllm serve.*${PORT}" 2>/dev/null || true
     exit 0
 }
 trap cleanup SIGTERM SIGINT SIGHUP
 
-# Wait for the vLLM process (blocks until it exits).
-wait "$VLLM_PID"
+# Wait for vLLM to exit or idle signal.
+while kill -0 "$VLLM_PID" 2>/dev/null; do
+    # Check if idle detector wants us to stop.
+    if [ -f "$STOP_SIGNAL" ]; then
+        cleanup
+    fi
+    sleep 1
+done
+
+# Propagate vLLM's exit code to systemd (Restart=on-failure needs non-zero on crash).
+wait "$VLLM_PID" 2>/dev/null
+exit $?
