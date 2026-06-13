@@ -86,6 +86,7 @@ export TOKENIZERS_PARALLELISM=true
 export OMP_NUM_THREADS=12
 export MKL_NUM_THREADS=12
 export OPENBLAS_NUM_THREADS=12
+export VLLM_SERVER_DEV_MODE=1  # enables /dev/sleep and /dev/wake_up endpoints
 
 
 # Detect R9700 GPUs and set HIP_VISIBLE_DEVICES (matches start_vllm.py behavior)
@@ -129,4 +130,5 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --served-model-name 27b_mtp --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
-  --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
+  --chat-template "${SCRIPT_DIR}/template_unsloth.jinja" \
+  --enable-sleep-mode
