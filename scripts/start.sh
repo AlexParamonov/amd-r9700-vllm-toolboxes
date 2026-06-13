@@ -3,13 +3,48 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --rebuild: drop all caches (vLLM compile, Triton, AITER JIT) and rebuild from scratch
-if [[ "${1:-}" == "--rebuild" ]]; then
+# Usage: $0 [triton|rocm|aiter] [--rebuild]
+ATTN_BACKEND="${1:-triton}"
+REBUILD=false
+if [[ "${2:-}" == "--rebuild" ]]; then
+  REBUILD=true
+fi
+
+if ! [[ "$ATTN_BACKEND" =~ ^(triton|rocm|aiter)$ ]]; then
+  echo "Usage: $0 [triton|rocm|aiter] [--rebuild]"
+  exit 1
+fi
+
+if $REBUILD; then
   echo "[*] Clearing caches..."
   rm -rf ~/.cache/vllm ~/.triton/cache ~/.aiter/jit
   echo "[*] Done. Starting fresh compilation."
-  shift
 fi
+
+case "$ATTN_BACKEND" in
+  triton)
+    export VLLM_ATTN_BACKEND=TRITON_ATTN
+    ;;
+  rocm)
+    export VLLM_ATTN_BACKEND=ROCM_ATTN
+    ;;
+  aiter)
+    export VLLM_ATTN_BACKEND=ROCM_AITER_UNIFIED_ATTN
+    export VLLM_ROCM_USE_AITER=1
+    export VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION=1
+    # Disable AITER subsystems that use C++/HIP JIT kernels (hang/crash on RDNA4)
+    export VLLM_ROCM_USE_AITER_MHA=0
+    export VLLM_ROCM_USE_AITER_PAGED_ATTN=0
+    export VLLM_ROCM_USE_AITER_MOE=0
+    export VLLM_ROCM_USE_AITER_LINEAR=0
+    export VLLM_ROCM_USE_AITER_RMSNORM=0
+    export VLLM_ROCM_USE_AITER_FP8BMM=0
+    export VLLM_ROCM_USE_AITER_FP4BMM=0
+    export VLLM_ROCM_USE_AITER_TRITON_ROPE=0
+    export PYTORCH_ALLOC_CONF=expandable_segments:True
+    ;;
+esac
+echo "[*] Attention backend: $ATTN_BACKEND ($VLLM_ATTN_BACKEND)"
 
 # Pre-flight: ensure GPU device access (host render GID must be in supplementary groups)
 if ! test -w /dev/dri/renderD128 2>/dev/null; then
@@ -81,14 +116,17 @@ if [[ -d "$HOST_CONFIGS" ]]; then
 fi
 
 # Launch vLLM
-vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-size 2 \
-  --dtype auto --trust-remote-code \ 
-  --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
-  --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   # --language-model-only \
   # --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
-  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 1 \
-  --max-model-len 196608 --served-model-name qwen27 --enable-prefix-caching \
-  --attention-backend TRITON_ATTN --mm-encoder-attn-backend TRITON_ATTN \
+  # --max-model-len 196608 \
+vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-size 2 \
+  --dtype auto --trust-remote-code \
+  --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
+  --language-model-only \
+  --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
+  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 2 \
+  --served-model-name qwen27 --enable-prefix-caching \
+  --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
   --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
