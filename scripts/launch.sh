@@ -96,13 +96,36 @@ cleanup() {
     echo "[*] Stopping vLLM (PID ${VLLM_PID})..."
     kill "$IDLE_PID" 2>/dev/null || true
     kill "$TAIL_PID" 2>/dev/null || true
-    # Kill the entire process group (vLLM + workers + children).
-    pkill -P "$VLLM_PID" 2>/dev/null || true
-    kill -- -"$(ps -o pgid= -p "$VLLM_PID" 2>/dev/null | tr -d ' ')" 2>/dev/null || true
+    
+    # Send SIGTERM to the process group (vLLM + workers + children).
+    local pgid
+    pgid=$(ps -o pgid= -p "$VLLM_PID" 2>/dev/null | tr -d ' ')
+    if [[ -n "$pgid" && "$pgid" != "0" ]]; then
+        kill -- -"$pgid" 2>/dev/null || true
+    fi
     kill "$VLLM_PID" 2>/dev/null || true
-    wait "$VLLM_PID" 2>/dev/null || true
+    
+    # Wait up to 10 seconds for graceful shutdown.
+    local timeout=10
+    local start_time
+    start_time=$(date +%s)
+    while kill -0 "$VLLM_PID" 2>/dev/null; do
+        local now
+        now=$(date +%s)
+        if (( now - start_time >= timeout )); then
+            echo "[-] vLLM did not stop within ${timeout}s, sending SIGKILL..."
+            kill -9 "$VLLM_PID" 2>/dev/null || true
+            if [[ -n "$pgid" && "$pgid" != "0" ]]; then
+                kill -9 -- -"$pgid" 2>/dev/null || true
+            fi
+            break
+        fi
+        sleep 1
+    done
+    
     # Safety sweep: kill any remaining vllm serve processes from this run.
     pkill -f "vllm serve.*${PORT}" 2>/dev/null || true
+    echo "[*] vLLM stopped."
     exit 0
 }
 trap cleanup SIGTERM SIGINT SIGHUP
