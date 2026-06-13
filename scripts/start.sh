@@ -17,7 +17,7 @@ fi
 
 if $REBUILD; then
   echo "[*] Clearing caches..."
-  rm -rf ~/.cache/vllm ~/.triton/cache ~/.aiter/jit
+  sudo rm -rf ~/.cache/vllm ~/.triton/cache ~/.aiter/jit
   echo "[*] Done. Starting fresh compilation."
 fi
 
@@ -124,7 +124,7 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   --language-model-only \
   --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
-  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 2 \
+  --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 1 \
   --served-model-name qwen27 --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
