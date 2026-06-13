@@ -98,26 +98,8 @@ cleanup() {
     kill "$IDLE_PID" 2>/dev/null || true
     kill "$TAIL_PID" 2>/dev/null || true
     
-    # Kill all vLLM processes (serve + workers + engine core).
-    local PATTERN="vllm serve|VLLM::Worker|VLLM::EngineCore"
-    if pgrep -f "$PATTERN" >/dev/null 2>&1; then
-        pkill -f "$PATTERN" || true
-    fi
-    
-    # Wait up to 15 seconds for graceful shutdown.
-    local timeout=15
-    local start_time
-    start_time=$(date +%s)
-    while pgrep -f "$PATTERN" >/dev/null 2>&1; do
-        local now
-        now=$(date +%s)
-        if (( now - start_time >= timeout )); then
-            echo "[-] vLLM did not stop within ${timeout}s, sending SIGKILL..."
-            pkill -9 -f "$PATTERN" || true
-            break
-        fi
-        sleep 1
-    done
+    # Reuse stop.sh for consistent SIGTERM/timeout/SIGKILL logic.
+    bash "${SCRIPT_DIR}/stop.sh"
     
     echo "[*] vLLM stopped."
     exit 0
