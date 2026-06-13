@@ -72,10 +72,20 @@ else
   export HIP_VISIBLE_DEVICES=0
 fi
 
+# Copy tuned FP8 W8A8 Block GEMM configs for gfx1201
+VLLM_CONFIGS_DIR="/opt/venv/lib/python3.12/site-packages/vllm/model_executor/layers/quantization/utils/configs"
+HOST_CONFIGS="/run/host/home/ap/code/amd-r9700-vllm-toolboxes/configs/gfx1201"
+if [[ -d "$HOST_CONFIGS" ]]; then
+  mkdir -p "$VLLM_CONFIGS_DIR"
+  cp -n "$HOST_CONFIGS"/*.json "$VLLM_CONFIGS_DIR/" 2>/dev/null || true
+fi
+
+# Launch vLLM
 vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-size 2 \
-  --dtype auto --trust-remote-code --language-model-only \
+  --dtype auto --trust-remote-code \ 
   --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
+  # --language-model-only \
   # --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
   --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' --max-num-seqs 1 \
   --max-model-len 196608 --served-model-name qwen27 --enable-prefix-caching \
