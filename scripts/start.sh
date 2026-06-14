@@ -128,11 +128,15 @@ fi
 
 # Build speculative config
 if [[ "$SPEC_METHOD" == "dflash" ]]; then
-  SPEC_CONFIG='{"method": "dflash", "model": "z-lab/Qwen3.6-27B-DFlash", "num_speculative_tokens": 5}'
+  SPEC_CONFIG='{"method": "dflash", "model": "z-lab/Qwen3.6-27B-DFlash", "num_speculative_tokens": 15}'
   SERVED_NAME="27b_dflash"
+  MAX_MODEL_LEN=98304
+  MAX_NUM_SEQS=1
 else
   SPEC_CONFIG='{"method": "mtp", "num_speculative_tokens": 3}'
   SERVED_NAME="27b_mtp"
+  MAX_MODEL_LEN=196608
+  MAX_NUM_SEQS=2
 fi
 echo "[*] Speculative method: $SPEC_METHOD"
 
@@ -142,7 +146,7 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   --language-model-only \
-  --max-model-len 196608  --max-num-seqs 2 \
+  --max-model-len $MAX_MODEL_LEN  --max-num-seqs $MAX_NUM_SEQS \
   --speculative-config "$SPEC_CONFIG" \
   --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' \
   --served-model-name "$SERVED_NAME" --enable-prefix-caching \
