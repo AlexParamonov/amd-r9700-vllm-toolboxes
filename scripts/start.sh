@@ -3,15 +3,27 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Usage: $0 [triton|rocm|aiter] [--rebuild]
+# Usage: $0 [triton|rocm|aiter] [--rebuild] [--spec mtp|dflash]
 ATTN_BACKEND="${1:-aiter}"
 REBUILD=false
-if [[ "${2:-}" == "--rebuild" ]]; then
-  REBUILD=true
-fi
+SPEC_METHOD="dflash"
+
+shift 2>/dev/null || true
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rebuild) REBUILD=true; shift ;;
+    --spec) SPEC_METHOD="${2:-dflash}"; shift 2 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
 
 if ! [[ "$ATTN_BACKEND" =~ ^(triton|rocm|aiter)$ ]]; then
-  echo "Usage: $0 [triton|rocm|aiter] [--rebuild]"
+  echo "Usage: $0 [triton|rocm|aiter] [--rebuild] [--spec mtp|dflash]"
+  exit 1
+fi
+
+if ! [[ "$SPEC_METHOD" =~ ^(mtp|dflash)$ ]]; then
+  echo "Usage: --spec must be 'mtp' or 'dflash'"
   exit 1
 fi
 
@@ -114,19 +126,26 @@ if [[ -d "$HOST_CONFIGS" ]]; then
   cp -n "$HOST_CONFIGS"/*.json "$VLLM_CONFIGS_DIR/" 2>/dev/null || true
 fi
 
+# Build speculative config
+if [[ "$SPEC_METHOD" == "dflash" ]]; then
+  SPEC_CONFIG='{"method": "dflash", "model": "z-lab/Qwen3.6-27B-DFlash", "num_speculative_tokens": 5}'
+  SERVED_NAME="27b_dflash"
+else
+  SPEC_CONFIG='{"method": "mtp", "num_speculative_tokens": 3}'
+  SERVED_NAME="27b_mtp"
+fi
+echo "[*] Speculative method: $SPEC_METHOD"
+
 # Launch vLLM
-  # --language-model-only \
-  # --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
-  # --max-model-len 196608 \
 vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-size 2 \
   --dtype auto --trust-remote-code \
   --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
   --language-model-only \
   --max-model-len 196608  --max-num-seqs 2 \
-  --speculative-config '{"method": "mtp", "num_speculative_tokens": 3}' \
+  --speculative-config "$SPEC_CONFIG" \
   --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' \
-  --served-model-name 27b_mtp --enable-prefix-caching \
+  --served-model-name "$SERVED_NAME" --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
   --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
