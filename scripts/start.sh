@@ -129,12 +129,10 @@ fi
 # Build speculative config
 if [[ "$SPEC_METHOD" == "dflash" ]]; then
   SPEC_CONFIG='{"method": "dflash", "model": "z-lab/Qwen3.6-27B-DFlash", "num_speculative_tokens": 15}'
-  SERVED_NAME="27b_dflash"
   MAX_MODEL_LEN=98304
   MAX_NUM_SEQS=1
 else
   SPEC_CONFIG='{"method": "mtp", "num_speculative_tokens": 3}'
-  SERVED_NAME="27b_mtp"
   MAX_MODEL_LEN=196608
   MAX_NUM_SEQS=2
 fi
@@ -149,7 +147,7 @@ vllm serve Qwen/Qwen3.6-27B-FP8 --host 0.0.0.0 --port 8079 --tensor-parallel-siz
   --max-model-len $MAX_MODEL_LEN  --max-num-seqs $MAX_NUM_SEQS \
   --speculative-config "$SPEC_CONFIG" \
   --override-generation-config '{"temperature": 0.6, "top_p": 0.95, "top_k": 20}' \
-  --served-model-name "$SERVED_NAME" --enable-prefix-caching \
+  --served-model-name 27b_mtp --enable-prefix-caching \
   --attention-backend $VLLM_ATTN_BACKEND --mm-encoder-attn-backend TRITON_ATTN \
   --compilation-config '{"pass_config":{"fuse_norm_quant":false}}' \
   --chat-template "${SCRIPT_DIR}/template_unsloth.jinja"
