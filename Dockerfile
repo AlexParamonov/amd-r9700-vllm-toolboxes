@@ -58,9 +58,11 @@ RUN printf 'source /opt/venv/bin/activate\n' > /etc/profile.d/venv.sh
 RUN python -m pip install --upgrade pip wheel packaging "setuptools<80.0.0"
 
 # 5. Install PyTorch (TheRock Nightly)
+# Pin to known good version
+ARG TORCH_ROCM_VERSION=2.13.0a0+rocm7.14.0a20260608
 RUN python -m pip install \
   --index-url https://rocm.nightlies.amd.com/v2-staging/gfx120X-all/ \
-  --pre torch torchaudio torchvision && \
+  --pre "torch==${TORCH_ROCM_VERSION}" torch torchaudio torchvision && \
   find /opt/venv/lib/python3.12/site-packages/torch* -type f -name "*.so" -exec strip -s {} + 2>/dev/null || true && \
   find /opt/venv/lib/python3.12/site-packages/torch* -type d -name "__pycache__" -prune -exec rm -rf {} +
 
@@ -85,7 +87,7 @@ COPY scripts/patch_vllm.py patch_vllm.py
 RUN python patch_vllm.py
 
 # 7. Build vLLM (Wheel Method) with CLANG Host Compiler
-RUN python -m pip install --upgrade cmake ninja packaging wheel numpy "setuptools-scm>=8" "setuptools<80.0.0" scikit-build-core pybind11
+RUN python -m pip install --upgrade cmake ninja packaging wheel numpy "setuptools-scm>=8" "setuptools<80.0.0" scikit-build-core pybind11 setuptools-rust
 ENV ROCM_HOME="/opt/rocm"
 ENV HIP_PATH="/opt/rocm"
 ENV VLLM_TARGET_DEVICE="rocm"
@@ -138,7 +140,9 @@ RUN cmake -S . \
 # depends on rocm_sdk_core (missing). Remove it so aiter falls through
 # to the real /opt/rocm/bin/hipconfig.
 RUN rm -f /opt/venv/bin/hipconfig && \
-  python -m pip install git+https://github.com/ROCm/aiter.git
+  python -m pip install git+https://github.com/ROCm/aiter.git && \
+  chmod a+w /opt/venv/lib64/python3.12/site-packages/aiter/jit/
+
 
 # 8. Runtime Configurations
 WORKDIR /opt
@@ -159,15 +163,5 @@ COPY benchmarks/models.py /opt/models.py
 RUN chmod 0644 /etc/profile.d/*.sh && chmod +x /usr/local/bin/start-vllm && chmod 0644 /opt/max_context_results.json && chmod 0644 /opt/models.py
 RUN printf 'ulimit -S -c 0\n' > /etc/profile.d/90-nocoredump.sh && chmod 0644 /etc/profile.d/90-nocoredump.sh
 
-# 9. Install Custom RCCL (gfx1201) - Replaces standard library with manually built one
-COPY custom_libs/librccl.so.1.gz /tmp/librccl.so.1.gz
-RUN echo "Installing Custom RCCL..." && \
-  gzip -d /tmp/librccl.so.1.gz && \
-  chmod 755 /tmp/librccl.so.1 && \
-  # Replace /opt/rocm library strictly
-  cp -fv /tmp/librccl.so.1 /opt/rocm/lib/librccl.so.1.0 && \
-  # Replace /opt/venv library
-  find /opt/venv -name "librccl.so*" -type f -exec cp -fv /tmp/librccl.so.1 {} + && \
-  rm /tmp/librccl.so.1
 
 CMD ["/bin/bash"]
