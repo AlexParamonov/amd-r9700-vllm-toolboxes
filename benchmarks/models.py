@@ -96,8 +96,7 @@ MODEL_TABLE = {
         "max_tokens": "16384",
         "ctx": "32768",
         "language_model_only": True,
-        "gpu_util": "0.95",
-        "enable_tool_choice": True
+        "gpu_util": "0.95"
     }
 }
 

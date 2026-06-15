@@ -38,13 +38,13 @@ PORT = os.getenv("PORT", "8000")
 
 def find_r9700():
     """Finds ALL gfx1201 GPUs and sets HIP_VISIBLE_DEVICES.
-
+    
     CRITICAL: Do NOT set CUDA_VISIBLE_DEVICES or ROCR_VISIBLE_DEVICES.
     Those conflict with HIP_VISIBLE_DEVICES and break RCCL initialization,
     causing vLLM to hang at distributed init.
     """
     gfx1201_indices = []
-    try:
+    try:    
         res = subprocess.run(
             ["rocm-smi", "--showproductname"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -59,7 +59,7 @@ def find_r9700():
                 current_gpu = None  # Reset so we don't double-count
     except Exception:
         pass
-
+    
     if gfx1201_indices:
         visible = ",".join(gfx1201_indices)
         os.environ["HIP_VISIBLE_DEVICES"] = visible
@@ -82,7 +82,7 @@ def detect_gpus():
                     count += 1
             if count > 0: return count
     except: pass
-
+    
     # Fallback to /dev/dri/render*
     try:
         return len(list(Path("/dev/dri").glob("renderD*")))
@@ -95,14 +95,14 @@ def get_discovered_models():
     """
     gpu_count = detect_gpus()
     compatible_models = []
-
+    
     for m in MODELS_TO_RUN:
         if m in MODEL_TABLE:
             valid_tps = MODEL_TABLE[m].get("valid_tp", [1])
             min_required = min(valid_tps)
             if min_required <= gpu_count:
                 compatible_models.append(m)
-
+                
     return compatible_models
 
 # Refresh the list of models to run based on what we found
@@ -123,37 +123,37 @@ def get_verified_config(model_id, tp_size, max_seqs):
         "ctx": config.get("ctx", "auto"),
         "util": float(config.get("gpu_util", 0.90)) # Safe default
     }
-
+    
     if not RESULTS_FILE.exists():
         return default_config
 
     try:
         with open(RESULTS_FILE, "r") as f:
             data = json.load(f)
-
+            
         # Filter for Model + TP + Sequences
-        matches = [r for r in data
-                  if r["model"] == model_id
-                  and r["tp"] == tp_size
-                  and r["max_seqs"] == max_seqs
+        matches = [r for r in data 
+                  if r["model"] == model_id 
+                  and r["tp"] == tp_size 
+                  and r["max_seqs"] == max_seqs 
                   and r["status"] == "success"]
-
+        
         if not matches:
             # Fallback 1: Try finding match with SAME TP but ANY Sequences (e.g. 1) to get base context?
             # Actually, safer to fallback to default or try finding nearest sequence?
             # Let's try finding exact match first. If fail, return default.
             return default_config
-
+            
         # Sort by Util desc, then Context desc
         # We prefer higher utilization if available (performance), as long as it is verified success
         matches.sort(key=lambda x: (float(x["util"]), x["max_context_1_user"]), reverse=True)
-
+        
         best = matches[0]
         return {
             "ctx": best["max_context_1_user"],
             "util": float(best["util"])
         }
-
+        
     except Exception as e:
         return default_config
 
@@ -173,7 +173,7 @@ def nuke_vllm_cache():
     cache = Path.home() / ".cache" / "vllm"
     triton_cache = Path.home() / ".triton" / "cache"
     aiter_cache = Path.home() / ".aiter"
-
+    
     for cache_dir, label in [(cache, "vLLM"), (triton_cache, "Triton"), (aiter_cache, "Aiter JIT")]:
         if cache_dir.exists():
             try:
@@ -186,31 +186,31 @@ def nuke_vllm_cache():
 def configure_and_launch(model_idx, gpu_count):
     model_id = MODELS_TO_RUN[model_idx]
     config = MODEL_TABLE[model_id]
-
+    
     # Static Config
     valid_tps = config.get("valid_tp", [1])
     max_tp = max(valid_tps) if valid_tps else 1
-
+    
     # Defaults
     current_tp = min(gpu_count, max_tp)
     current_seqs = 1 # Default to 1 concurrent user/request for stability
-
+    
     # Initial Lookup
     verified = get_verified_config(model_id, current_tp, current_seqs)
     current_ctx = verified["ctx"]
     current_util = verified["util"]
-
-    clear_cache = False  # Default OFF: keep Triton/vLLM cache across restarts
+    
+    clear_cache = True  # Default ON: stale graphs from version upgrades cause crashes
     use_eager = config.get("enforce_eager", False) # Default to model config, usually False
     attn_backends = ["Triton", "ROCm (CK)", "AITER Unified"]
     current_attn_backend = "Triton" # Default to Triton
-
+    
     name = model_id.split("/")[-1]
-
+    
     while True:
         cache_status = "YES" if clear_cache else "NO"
         eager_status = "YES" if use_eager else "NO"
-
+        
         menu_args = [
             "--clear", "--backtitle", f"AMD R9700 vLLM Launcher (GPUs: {gpu_count})",
             "--title", f"Configuration: {name}",
@@ -224,17 +224,17 @@ def configure_and_launch(model_idx, gpu_count):
             "7", f"Force Eager Mode:     {eager_status}",
             "8", "LAUNCH SERVER"
         ]
-
+        
         choice = run_dialog(menu_args)
         if not choice: return False # Back/Cancel
-
+        
         if choice == "1":
             # TP Selection
             new_tp = run_dialog([
                 "--title", "Tensor Parallelism",
                 "--rangebox", f"Set TP Size (1-{max_tp})", "10", "40", "1", str(max_tp), str(current_tp)
             ])
-            if new_tp:
+            if new_tp: 
                 new_tp_int = int(new_tp)
                 if new_tp_int != current_tp:
                     current_tp = new_tp_int
@@ -242,7 +242,7 @@ def configure_and_launch(model_idx, gpu_count):
                     verified = get_verified_config(model_id, current_tp, current_seqs)
                     current_ctx = verified["ctx"]
                     current_util = verified["util"]
-
+            
         elif choice == "2":
             # Max Seqs Selection
             new_seqs = run_dialog([
@@ -270,7 +270,7 @@ def configure_and_launch(model_idx, gpu_count):
 
         elif choice == "4":
              # Util Override
-             pass
+             pass 
 
         elif choice == "5":
             # Cycle Attention Backend
@@ -289,32 +289,32 @@ def configure_and_launch(model_idx, gpu_count):
                     "Are you sure you want to enable this?"
                 )
                 confirm = run_dialog([
-                    "--title", "Erase Cache Warning",
+                    "--title", "Erase Cache Warning", 
                     "--yesno", warn_msg, "12", "60"
                 ])
-
+                
                 # If confirm is not None (exit 0), it is YES.
                 if confirm is not None:
                      clear_cache = True
             else:
                 # Disabling it -> No warning needed
                 clear_cache = False
-
+             
         elif choice == "7":
             # Toggle Eager Mode
             use_eager = not use_eager
-
+             
         elif choice == "8":
             # Launch
             break
-
+            
     # Build Command
     subprocess.run(["clear"])
-
-
+    
+    
     if clear_cache:
         nuke_vllm_cache()
-
+    
     cmd = [
         "vllm", "serve", model_id,
         "--host", HOST,
@@ -325,21 +325,22 @@ def configure_and_launch(model_idx, gpu_count):
         "--gpu-memory-utilization", str(current_util),
         "--dtype", "auto"
     ]
-
+    
     if config.get("trust_remote"): cmd.append("--trust-remote-code")
     if use_eager: cmd.append("--enforce-eager")
     if config.get("language_model_only"): cmd.append("--language-model-only")
-
+    
     if "max_tokens" in config:
         cmd.extend(["--max-num-batched-tokens", str(config["max_tokens"])])
-
+        
     if "kv_cache_dtype" in config:
         cmd.extend(["--kv-cache-dtype", config["kv_cache_dtype"]])
-
+    
     # Env Vars
     env = os.environ.copy()
+    env["VLLM_DISABLE_COMPILE_CACHE"] = "1"
     env["NCCL_PROTO"] = "Simple"
-
+    
     if current_attn_backend == "AITER Unified":
         env["VLLM_ROCM_USE_AITER"] = "1"
         env["VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION"] = "1"
@@ -365,10 +366,6 @@ def configure_and_launch(model_idx, gpu_count):
         '{"pass_config":{"fuse_norm_quant":false}}'
     ])
 
-    # Enable tool calling for models that support it
-    cmd.extend(["--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder", "--reasoning-parser", "qwen3"])
-
-
     env.update(config.get("env", {}))
 
     # ViT attention on RDNA: the default falls to TORCH_SDPA (flash_attn's
@@ -377,7 +374,7 @@ def configure_and_launch(model_idx, gpu_count):
     # own Triton ViT wrapper and is numerically healthy. No-op for LM-only.
     cmd.extend(["--mm-encoder-attn-backend", "TRITON_ATTN"])
 
-
+    
     print("\n" + "="*60)
     print(f" Launching: {name}")
     print(f" Config:    TP={current_tp} | Seqs={current_seqs} | Ctx={current_ctx} | Util={current_util}")
@@ -385,48 +382,48 @@ def configure_and_launch(model_idx, gpu_count):
     if current_tp > gpu_count:
         print(f"Warning: Model requires TP={current_tp} but only {gpu_count} GPUs detected.")
         print("Command may fail.")
-
+        
     if clear_cache:
         print(f" Action:    Clearing vLLM/Triton Caches")
-
+        
     # Variables that represent the custom environment overrides for models
     custom_env = config.get("env", {})
     if custom_env:
         print("\n --- Environment Variables ---")
         for k, v in custom_env.items():
             print(f" export {k}={v}")
-
+            
     print(f"\n Command:   {' '.join(cmd)}")
     print("="*60 + "\n")
-
+    
     os.execvpe("vllm", cmd, env)
 
 def main():
     find_r9700()
     check_dependencies()
     gpu_count = detect_gpus()
-
+    
     while True:
         # Build Model Menu
         menu_items = []
         for i, m_id in enumerate(MODELS_TO_RUN):
             name = m_id.split("/")[-1]
-            # Pre-calc verified ctx for 'default' TP to show in menu?
+            # Pre-calc verified ctx for 'default' TP to show in menu? 
             # Or just show names. Just names is cleaner.
             config = MODEL_TABLE[m_id]
             menu_items.extend([str(i), name])
-
+            
         choice = run_dialog([
             "--clear", "--backtitle", f"AMD R9700 vLLM Launcher (GPUs: {gpu_count})",
             "--title", "Select Model",
             "--menu", "Choose a model to serve:", "20", "60", "10"
         ] + menu_items)
-
+        
         if not choice:
             subprocess.run(["clear"])
             print("Selection cancelled.")
             sys.exit(0)
-
+            
         configure_and_launch(int(choice), gpu_count)
 
 if __name__ == "__main__":

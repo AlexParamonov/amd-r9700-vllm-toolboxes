@@ -10,10 +10,6 @@ RUN dnf -y install --setopt=install_weak_deps=False --nodocs \
   numactl-devel gperftools-libs dialog procps-ng \
   && dnf clean all && rm -rf /var/cache/dnf/*
 
-# 1b. Create host render group (GID 991) so distrobox user can access /dev/dri/renderD*
-# when the host's render group maps to GID 991 but the container doesn't have it.
-RUN groupadd -g 991 render_host
-
 # 2. Install "TheRock" ROCm SDK (Tarball Method)
 WORKDIR /tmp
 ARG ROCM_MAJOR_VER=7
