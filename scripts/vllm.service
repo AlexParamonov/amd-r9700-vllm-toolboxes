@@ -1,5 +1,5 @@
 [Unit]
-Description=vLLM Qwen3.6-27B-FP8 (dual R9700, aiter backend)
+Description=vLLM Qwen3.6-27B-FP8 (dual R9700, mtp, aiter backend)
 After=network-online.target
 Wants=network-online.target
 
