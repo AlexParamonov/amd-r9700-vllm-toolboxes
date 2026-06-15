@@ -13,6 +13,7 @@ KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=30
 
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do test -e /dev/dri/renderD129 && exit 0; sleep 1; done; exit 1'
 ExecStart=/usr/bin/distrobox enter -T vllm-r9700 -- /home/ap/code/amd-r9700-vllm-toolboxes/scripts/launch.sh
 
 Restart=on-failure
