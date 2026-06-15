@@ -6,13 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Usage: $0 [triton|rocm|aiter] [--rebuild] [--spec mtp|dflash]
 ATTN_BACKEND="${1:-aiter}"
 REBUILD=false
-SPEC_METHOD="dflash"
+SPEC_METHOD="mtp"
 
 shift 2>/dev/null || true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rebuild) REBUILD=true; shift ;;
-    --spec) SPEC_METHOD="${2:-dflash}"; shift 2 ;;
+    --spec) SPEC_METHOD="${2:-mtp}"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
