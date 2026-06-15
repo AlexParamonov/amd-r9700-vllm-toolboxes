@@ -99,6 +99,12 @@ export OMP_NUM_THREADS=12
 export MKL_NUM_THREADS=12
 export OPENBLAS_NUM_THREADS=12
 
+# Fix aiter JIT permissions if not writable (fallback for build-time chmod)
+AITER_JIT_DIR="/opt/venv/lib64/python3.12/site-packages/aiter/jit"
+if [[ -d "$AITER_JIT_DIR" && ! -w "$AITER_JIT_DIR" ]]; then
+  echo "[*] Fixing aiter JIT permissions..."
+  sudo chmod a+w "$AITER_JIT_DIR"
+fi
 
 # Detect R9700 GPUs and set HIP_VISIBLE_DEVICES (matches start_vllm.py behavior)
 gfx1201_indices=()
