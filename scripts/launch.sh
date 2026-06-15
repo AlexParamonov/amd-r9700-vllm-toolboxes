@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${VLLM_PORT:-8079}"
 LOGFILE="${VLLM_LOG:-/tmp/vllm.log}"
-IDLE_TIMEOUT="${VLLM_IDLE_SECONDS:-1500}"  # seconds of no requests before auto-stop
+# IDLE_TIMEOUT="${VLLM_IDLE_SECONDS:-1500}"  # seconds of no requests before auto-stop
 
 # Function to find existing vLLM process by port (could be starting or running)
 find_existing_vllm() {
@@ -56,37 +56,37 @@ done
 # Run warmup to trigger JIT compilation.
 bash "${SCRIPT_DIR}/warmup.sh" "$PORT"
 
-# --- Idle detection ---
+# --- Idle detection (disabled) ---
 # Poll /metrics every 60s. If no requests for IDLE_TIMEOUT seconds, stop vLLM.
-last_activity=$(date +%s)
-
-check_idle() {
-    tokens_prev=""
-    while true; do
-        sleep 60
-        # Check if vLLM is still alive
-        if ! kill -0 "$VLLM_PID" 2>/dev/null; then
-            break
-        fi
-        # Query vLLM metrics — track monotonically increasing counter
-        tokens_now=$(curl -sf "http://localhost:${PORT}/metrics" 2>/dev/null | grep -E '^vllm:generation_tokens_total\{' | awk '{s+=$NF} END {print s+0}' || echo "0")
-        if [ "${tokens_now:-0}" != "${tokens_prev:-0}" ]; then
-            last_activity=$(date +%s)
-            tokens_prev=$tokens_now
-        fi
-        idle=$(($(date +%s) - last_activity))
-        if [ "$idle" -ge "$IDLE_TIMEOUT" ]; then
-            echo "[*] Idle ${idle}s (timeout ${IDLE_TIMEOUT}s), stopping vLLM..."
-            touch "$STOP_SIGNAL"
-            break
-        fi
-    done
-}
-STOP_SIGNAL=$(mktemp)
-rm -f "$STOP_SIGNAL"  # File should only exist when idle detection wants to stop
-trap "rm -f $STOP_SIGNAL" EXIT
-check_idle &
-IDLE_PID=$!
+# last_activity=$(date +%s)
+#
+# check_idle() {
+#     tokens_prev=""
+#     while true; do
+#         sleep 60
+#         # Check if vLLM is still alive
+#         if ! kill -0 "$VLLM_PID" 2>/dev/null; then
+#             break
+#         fi
+#         # Query vLLM metrics — track monotonically increasing counter
+#         tokens_now=$(curl -sf "http://localhost:${PORT}/metrics" 2>/dev/null | grep -E '^vllm:generation_tokens_total\{' | awk '{s+=$NF} END {print s+0}' || echo "0")
+#         if [ "${tokens_now:-0}" != "${tokens_prev:-0}" ]; then
+#             last_activity=$(date +%s)
+#             tokens_prev=$tokens_now
+#         fi
+#         idle=$(($(date +%s) - last_activity))
+#         if [ "$idle" -ge "$IDLE_TIMEOUT" ]; then
+#             echo "[*] Idle ${idle}s (timeout ${IDLE_TIMEOUT}s), stopping vLLM..."
+#             touch "$STOP_SIGNAL"
+#             break
+#         fi
+#     done
+# }
+# STOP_SIGNAL=$(mktemp)
+# rm -f "$STOP_SIGNAL"  # File should only exist when idle detection wants to stop
+# trap "rm -f $STOP_SIGNAL" EXIT
+# check_idle &
+# IDLE_PID=$!
 
 # Tail the log so systemd keeps the service alive.
 tail -f "$LOGFILE" &
@@ -95,7 +95,7 @@ TAIL_PID=$!
 # Forward signals to the vLLM process and all its children.
 cleanup() {
     echo "[*] Stopping vLLM (PID ${VLLM_PID})..."
-    kill "$IDLE_PID" 2>/dev/null || true
+    # kill "$IDLE_PID" 2>/dev/null || true
     kill "$TAIL_PID" 2>/dev/null || true
     
     # Reuse stop.sh for consistent SIGTERM/timeout/SIGKILL logic.
@@ -106,9 +106,8 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT SIGHUP
 
-# Wait for vLLM to exit or idle signal.
-while [ -f "$STOP_SIGNAL" ] || kill -0 "$VLLM_PID" 2>/dev/null; do
-    [ -f "$STOP_SIGNAL" ] && cleanup
+# Wait for vLLM to exit.
+while kill -0 "$VLLM_PID" 2>/dev/null; do
     sleep 1
 done
 
